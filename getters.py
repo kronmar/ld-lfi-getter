@@ -7,7 +7,7 @@ from io import StringIO
 global namespaces
 namespaces = (
     "PREFIX cube: <https://cube.link/>\n"
-    "PREFIX geo: <http://www.opengis.net/ont/geosparql#>"
+    "PREFIX geo: <http://www.opengis.net/ont/geosparql#>\n"
     "PREFIX nfi: <https://environment.ld.admin.ch/foen/nfi/>\n"
     "PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>\n"
     "PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>\n"
@@ -17,7 +17,7 @@ namespaces = (
 
 # noinspection SqlNoDataSourceInspection
 class LDLFI:
-    _endpointURL = "https://int.ld.admin.ch/query"
+    _endpointURL = "https://test.ld.admin.ch/query"
 
     @staticmethod
     def getResults(query, returnFormat=CSV):
@@ -33,22 +33,23 @@ class LDLFI:
             return result['results']['bindings'][0]
 
     @classmethod
-    def getRegionNumbers(cls, keyword=None, language='en'):
+    def getRegionNumbers(cls, keyword=None, language='en', printQuery=False):
         keyword_filter = cls._constructKeywordFilter('?name', keyword)
         language_filter = cls._constructLanguageFilter('?name', language)
 
-        query = namespaces + ("""
-            SELECT ?name ?number
-            FROM <https://lindas.admin.ch/foen/nfi>
-            {{
-              ?prop a rdf:Property .
-              ?prop schema:name ?name .
-              ?prop schema:identifier ?number .
-              ?prop rdfs:subPropertyOf nfi:unitOfReference .
-              {0} {1}
-            }} order by asc(UCASE(str(?name)))""").format(keyword_filter, language_filter)
+        query = namespaces + \
+            "SELECT ?number ?name\n" + \
+            "FROM <https://lindas.admin.ch/foen/nfi>\n" + \
+            "{\n" + \
+            "  ?prop a nfi:UnitOfReference .\n" + \
+            "  ?prop schema:name ?name .\n" + \
+            "  ?prop schema:identifier ?number .\n" + \
+            "  {0} {1}\n".format(keyword_filter, language_filter) + \
+            "} order by asc(?number) \n\n\n"
 
-        print(cls.getResults(query))
+        if printQuery:
+            print(query)
+        print(cls.getResults(query).to_string(index=False))
 
     @classmethod
     def getClassificationNumbers(cls, keyword=None, language='en'):
@@ -56,17 +57,16 @@ class LDLFI:
         language_filter = cls._constructLanguageFilter('?name', language)
 
         query = namespaces + ("""
-            select ?name ?number
+            select ?number ?name
             from <https://lindas.admin.ch/foen/nfi>
             {{
-              ?prop a rdf:Property .
+              ?prop a nfi:ClassificationUnit .
               ?prop schema:name ?name .
               ?prop schema:identifier ?number .
-              ?prop rdfs:subPropertyOf nfi:classificationUnit .
               {0} {1}
-            }} order by asc(UCASE(str(?name)))""").format(keyword_filter, language_filter)
+            }} order by asc(?number)""").format(keyword_filter, language_filter)
 
-        print(cls.getResults(query))
+        print(cls.getResults(query).to_string(index=False))
 
     @classmethod
     def getTopicNumbers(cls, keyword=None, language='en'):
@@ -74,7 +74,7 @@ class LDLFI:
         language_filter = cls._constructLanguageFilter('?name', language)
 
         query = namespaces + ("""
-            SELECT ?name ?number
+            SELECT ?number ?name
             FROM <https://lindas.admin.ch/foen/nfi>
             {{
               ?prop a rdf:Property .
@@ -82,9 +82,9 @@ class LDLFI:
               ?prop schema:identifier ?number .
               ?prop rdfs:subPropertyOf nfi:targetValue .
               {0} {1}
-            }} order by asc(UCASE(str(?name)))""").format(keyword_filter, language_filter)
+            }} order by asc(?number)""").format(keyword_filter, language_filter)
 
-        print(cls.getResults(query))
+        print(cls.getResults(query).to_string(index=False))
 
     @classmethod
     def getUnitOfEvaluationNumbers(cls, keyword=None, language='en'):
@@ -92,16 +92,16 @@ class LDLFI:
         language_filter = cls._constructLanguageFilter('?name', language)
 
         query = namespaces + ("""
-            SELECT ?name ?number
+            SELECT ?number ?name 
             FROM <https://lindas.admin.ch/foen/nfi>
             {{
               ?prop a nfi:UnitOfEvaluation .
               ?prop schema:name ?name .
               ?prop schema:identifier ?number .
               {0} {1}
-            }} order by asc(UCASE(str(?name)))""").format(keyword_filter, language_filter)
+            }} order by asc(?number)""").format(keyword_filter, language_filter)
 
-        print(cls.getResults(query))
+        print(cls.getResults(query).to_string(index=False))
 
     @classmethod
     def getData(cls, topicNumber, classificationNumber, regionNumber, unitOfEvaluationNumber, language='en', geometry=False):
@@ -109,24 +109,24 @@ class LDLFI:
         topicProperty = cls._getTopicProperty(topicNumber, relative)
         topicSEProperty = cls._getTopicSEProperty(topicProperty)
         classificationProperty = cls._getClassificationProperty(classificationNumber)
+        regionType = cls._getRegionType(regionNumber)
 
         # Get the base data from lindas
         query = namespaces + ("""
             SELECT DISTINCT ?inventoryName ?classificationName ?regionName ?unitOfEvaluationName ?topicValue ?topicSE ?geometryIRI
-            FROM <https://lindas.admin.ch/foen/nfi>
             {{ 
               # Base Lookup
               ?obs a cube:Observation ;
                 nfi:inventory ?inventoryIRI ;
                 <{0}> ?topicValue ;
                 <{1}> ?topicSE ;
-                <{2}> ?classificationIRI ;
+                nfi:classificationUnit ?classificationIRI ;
                 nfi:unitOfReference ?regionIRI ;
                 nfi:unitOfEvaluation ?unitOfEvaluationIRI .
               
+              ?classificationIRI a <{2}> .
               # Filters
-              ?regionIRI a ?regionTypeIRI .
-              ?regionTypeIRI schema:identifier {3} .
+              ?regionIRI a <{3}> .
               ?unitOfEvaluationIRI schema:identifier {4} .
               ?regionIRI geo:hasGeometry ?geometryIRI .
               
@@ -135,7 +135,7 @@ class LDLFI:
               ?classificationIRI schema:name ?classificationName . FILTER(lang(?classificationName)='{5}') .
               ?regionIRI schema:name ?regionName . FILTER(lang(?regionName)='{5}') .
               ?unitOfEvaluationIRI schema:name ?unitOfEvaluationName . FILTER(lang(?unitOfEvaluationName)='{5}') .
-            }}""").format(topicProperty, topicSEProperty, classificationProperty, regionNumber, unitOfEvaluationNumber,
+            }}""").format(topicProperty, topicSEProperty, classificationProperty, regionType, unitOfEvaluationNumber,
                           language)
 
         data = cls.getResults(query)
@@ -237,13 +237,27 @@ class LDLFI:
         SELECT ?classificationIRI 
         FROM <https://lindas.admin.ch/foen/nfi>
         {{
-            ?classificationIRI rdfs:subPropertyOf nfi:classificationUnit .
+            ?classificationIRI a nfi:ClassificationUnit .
             ?classificationIRI schema:identifier {} .
         }}
         """.format(classificationNumber)
 
         result = cls.getResults(query, returnFormat=JSON)
         return result['classificationIRI']['value']
+
+    @classmethod
+    def _getRegionType(cls, regionNumber):
+        query = namespaces + """
+        SELECT ?regionTypeIRI
+        FROM <https://lindas.admin.ch/foen/nfi>
+        {{
+            ?regionTypeIRI a nfi:UnitOfReference .
+            ?regionTypeIRI schema:identifier {} .
+        }}
+        """.format(regionNumber)
+
+        result = cls.getResults(query, returnFormat=JSON)
+        return result['regionTypeIRI']['value']
 
     @staticmethod
     def _constructLanguageFilter(filter_target, language):

@@ -1,0 +1,74 @@
+---
+title: "Collecting and plotting"
+output: html_notebook
+---
+
+```{r}
+library(SPARQLchunks)
+library(ggplot2)
+library(dplyr)
+source("getters.R")
+endpointLindas <- "https://int.lindas.admin.ch/query"
+```
+
+## Collecting
+
+We will use the library "SPARQLchunk". For installation, type `remotes::install_github("aourednik/SPARQLchunks", build_vignettes = TRUE)` into your console. Should this not work, please consider [this link]("https://ourednik.info/maps/2021/12/14/execute-sparql-chunks-in-r-markdown/").
+
+Our goal within this notebook is to first collect the information from [this table]("https://lfi.ch/resultate/resultate-en.php?befNr=96&fldSearch=&invNr=450&p=search&regionNr=366&zigrNr=21&prodNr=70&prodItNr=869392") about the volume within the economic regions, the accessible forests without shrub forest, and during the latest published NFI period classified by conifers and broadleaves.
+
+To fetch the data, we will use the keys that are used in the underlying relational database. To get these keys, we wrote some small functions to help in this.
+
+First, we are interested in the number of our topic:
+
+```{r}
+topicNumberQuery <- getTopicNumber()
+sparql2df(endpoint = endpointLindas, query = topicNumberQuery)
+```
+
+As you see and mostly likely already knew, there are many. To help with this, one can provide a keyword:
+
+```{r}
+topicNumberQuery <- getTopicNumber(keyword = "volume")
+sparql2df(endpoint = endpointLindas, query = topicNumberQuery)
+```
+
+And thus we see, that the topic we are interested in hass the number "21".
+
+Next for the classification number. The search function supports other languages (specifically French, English, Italian and German), thus we can look up "Laubholz" for the classification unit we are interested (keep in mind, you have to also change the language parameter, or it might fail to fetch any information):
+
+```{r}
+classificationNumberQuery <- getClassificationNumber(keyword = "Laubholz", language = "de")
+sparql2df(endpoint = endpointLindas, query = classificationNumberQuery)
+```
+
+The regional information is gathered using:
+
+
+```{r}
+regionNumberQuery <- getRegionNumber()
+sparql2df(endpoint = endpointLindas, query = regionNumberQuery)
+```
+
+Finally, we also need the number for the unit of evaluation:
+
+
+```{r}
+unitOfEvaluationNumberQuery <- getUnitOfEvaluationNumber()
+sparql2df(endpoint = endpointLindas, query = unitOfEvaluationNumberQuery)
+```
+
+With all of that work out of the way, we can finally fetch the data. This script always fetches the data for all NFI periods. For the table above we thus need `topicNumber=21`, `classificationNumber=96`, `regionNumber=366`, and `unitOfEvaluationNumber=434`. An optional language parameter can be provided to change the labels' language.
+
+```{r}
+data <- getData(topicNumber = "21", classificationNumber = "96",
+                regionNumber ="366", unitOfEvaluationNumber = "434", geometry = F)
+```
+
+# Plotting
+
+```{r}
+data %>%
+  filter(inventoryName=="NFI4") %>%
+  filter(regionName != "Switzerland") 
+```
